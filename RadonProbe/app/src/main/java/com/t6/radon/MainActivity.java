@@ -1,5 +1,6 @@
 package com.t6.radon;
 
+import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -82,6 +83,17 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
     ArrayAdapter<String> pairedDevicesArrayAdapter;
     public final int  REQUEST_ENABLE_BT = 1;
 
+    // Storage Permissions
+    private static final int REQUEST_EXTERNAL_STORAGE = 1;
+    private static String[] PERMISSIONS_STORAGE = {
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+    };
+
+    private String[] dataLine = new String[7];
+    private FileWriter mFileWriter;
+    private CSVWriter mCSVWriter;
+
     private com.google.android.gms.location.LocationListener mLocationListener = new com.google.android.gms.location.LocationListener() {
         @Override
         public void onLocationChanged(Location location) {
@@ -126,22 +138,22 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
         mGoogleApiClient.connect();
         root = Environment.getExternalStorageDirectory().toString();
         filePath = root + "/DCIM/records.csv";
+        try{
+            mFileWriter = new FileWriter(filePath);
+            mCSVWriter = new CSVWriter(mFileWriter);
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+
 
         statusColor.setBackgroundColor(Color.GRAY);
         //read the file to initialize
-        try {
-            mFileReader = new FileReader(filePath);
-        } catch (java.io.FileNotFoundException e) {
-            try {
-                String[] firstRow = {"TimeStamp" ,"Sound_sensor", "Moisture", "Light", "UV", "Radon", "HomeLocation"};
-                FileWriter mFileWriter = new FileWriter(filePath);
-                CSVWriter mCSVWriter = new CSVWriter(mFileWriter);
-                mCSVWriter.writeNext(firstRow);
-                mCSVWriter.close();
-                mFileWriter.close();
-            } catch (Exception e2) {
-                e.printStackTrace();
-            }
+        String[] firstRow = {"TimeStamp" ,"Sound_sensor", "Moisture", "Light", "UV", "Radon", "HomeLocation"};
+        mCSVWriter.writeNext(firstRow);
+        try{
+            mCSVWriter.flush();
+        }catch (Exception e2){
+            e2.printStackTrace();
         }
         //now let's read again to make sure that we got the file read
         try {
@@ -366,6 +378,36 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
     private void writeIncomingData(String newData) throws java.io.FileNotFoundException, java.io.IOException {
         //to be optimized, everything is taken out here from the old file, modified and rewritten. It is only efficient for small amounts of rows here
         //If we have time we could optimize more here, but for our application it's enough
+        String[] newLine = newData.split(" ");
+        if(newLine[0].equals("Timestamp:")) {
+            dataLine[0] = newLine[1];
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    statusBox.setText("Status: Time received(" + dataLine[0] + ")");
+                }
+            });
+        }
+        if(newLine[0].equals("Temperature:")) {
+            dataLine[1] = newLine[1];
+        }
+        if(newLine[0].equals("Humidity:")) {
+            dataLine[2] = newLine[1];
+        }
+        if(newLine[0].equals("Light:")) {
+            dataLine[3] = newLine[1];
+        }
+        if(newLine[0].equals("UV:")) {
+            dataLine[4] = newLine[1];
+        }
+        if(newLine[0].equals("Radon:")) {
+            dataLine[5] = newLine[1];
+            dataLine[6] = "("+ mCurrentLocation.getLongitude() +"," + mCurrentLocation.getLatitude() + ")";
+            mCSVWriter.writeNext(dataLine);
+            mCSVWriter.flush();
+        }
+
+        /*
         newData = newData + ", HL";
         String[] newRow = newData.split("\\,");
         newRow[newRow.length - 1] = "("+ mCurrentLocation.getLongitude() +"," + mCurrentLocation.getLatitude() + ")";
@@ -380,6 +422,7 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
             lastReadDate = newTimeStamp;
         }
         //discard out-of-order data, or old data
+        */
     }
 
     /**
@@ -410,17 +453,27 @@ public class MainActivity extends Activity implements GoogleApiClient.Connection
 
             bufferedReader = new BufferedReader(new InputStreamReader(mmInStream));
             bufferedWriter = new BufferedWriter(new OutputStreamWriter(mmOutStream));
-            statusBox.setText("Status: Connected to device" + deviceName);
-            statusColor.setBackgroundColor(Color.BLUE);
-            //change how the activity looks
-            pairedListView.setVisibility(View.INVISIBLE);
-            sendCommand.setVisibility(View.VISIBLE);
-            commandLine.setVisibility(View.VISIBLE);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    statusBox.setText("Status: Connected to device" + deviceName);
+                    statusColor.setBackgroundColor(Color.BLUE);
+                    //change how the activity looks
+                    pairedListView.setVisibility(View.INVISIBLE);
+                    sendCommand.setVisibility(View.VISIBLE);
+                    commandLine.setVisibility(View.VISIBLE);
+                }
+            });
 
             sendCommand.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    statusBox.setText("Status: Command sent("+commandLine.getText().toString()+")");
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            statusBox.setText("Status: Command sent(" + commandLine.getText().toString()+")");
+                        }
+                    });
                     System.out.println(commandLine.getText().toString());
                     System.out.println("clicked");
                     System.out.println(mCurrentLocation.getLongitude() + "," + mCurrentLocation.getLatitude());
